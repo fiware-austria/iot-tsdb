@@ -1,24 +1,5 @@
 import mongoose from 'mongoose';
 
-/*
- The plain Cat entity type completely agnostic of mongoose
-*/
-export interface ICat {
-  name: string,
-  weight: number,
-  age: number
-}
-
-
-/*
- This interface represents the document (model instance) returned by
- mongoose. It consists of the document properties and all instance methods
- like save(), remove() and so on
- */
-export interface ICatDocument extends ICat, mongoose.Document {
-  _id: mongoose.Schema.Types.ObjectId;
-}
-
 
 
 export interface GitHubUser {
@@ -62,55 +43,6 @@ export interface IUserModel extends IUser, mongoose.Model<IUserDocument> {
   findOrCreate: (user: GitHubUser) => Promise<IUserDocument>;
 }
 
-
-export interface ISensorValue {
-  sensorId: string,
-  valueName: string,
-  value: any,
-  timestamp: Date
-}
-
-export interface ISensorValueDocument extends ISensorValue, mongoose.Document {
-  _id: mongoose.Schema.Types.ObjectId;
-}
-
-// IDAS group/service
-export interface IGroup {
-  apikey: string,
-  token: string,
-  entity_type: string,
-  resource: string,
-}
-
-export interface IGroupDocument extends IGroup, mongoose.Document {
-  _id: mongoose.Schema.Types.ObjectId;
-}
-
-// IDAS device
-export interface IDeviceField {
-  object_id: string,
-  name: string,
-  type: string
-}
-
-export interface IDevice {
-  device_id: string,
-  entity_name: string,
-  entity_type: string,
-  timezone: string,
-  attributes: [IDeviceField]
-}
-
-export interface IDeviceDocument extends IDevice, mongoose.Document {
-  _id: mongoose.Schema.Types.ObjectId;
-}
-
-export interface ICachedDevice {
-  device_id: string;
-  entity_type: string;
-  entity_name: string;
-  attributes: {};
-}
 
 
 

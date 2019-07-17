@@ -54,19 +54,20 @@ beforeEach(async () => await clearDB());
 
 afterAll(async () => await clearDB());
 
-const checkEntity = (entity: {}, sample: {}, ignore = ['_id', 'timestamp', 'sensorId', 'entity_type']) => {
-  console.log('Checking entity: ' + entity['_id'].id);
-  Object.entries(sample).forEach(([key, value]) => {
-      if (!ignore.includes(key)) {
-        console.log('Testing property: ' + key);
-        expect(entity['attrs'][key].value).toEqual(value)
-      }
-    }
-  );
-}
+const createTestEntries = (nr) =>
+  range(nr).map(nr => ({
+    sensorId: 'sensor1'
+  }))
 
 
+describe('Simple Raw Comet Query', () => {
+  it('should get us the latest 10 results', async () => {
+    console.log('here');
+  })
+});
 
+
+/*
 const createRequest = data =>
   supertest(app)
     .post(`/iot/d?i=${data.device_id}&k=${data.apiKey}`)
@@ -218,4 +219,4 @@ describe('POST /api/iot/d', () => {
   });
 
 });
-
+*/
