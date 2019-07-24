@@ -4,17 +4,12 @@ import dotenv from 'dotenv';
 dotenv.config({path: '.env.test'});
 import mongoose from 'mongoose';
 import {app} from '../server/app';
-import SensorValue from '../server/models/sensor-value';
 
 
 // import * as Bluebird from 'bluebird';
-import {createUsers, range, saveUsers, getToken, storeGroups, storeDevices} from './helpers';
+import {createUsers, range, saveUsers, getToken} from './helpers';
 import User from '../server/models/user';
-import Device from '../server/models/device';
-import Group from '../server/models/group';
-import {IDevice, IDeviceDocument} from '../server/models/types';
-import device from '../server/controllers/device';
-import {sample} from 'rxjs/operators';
+
 
 
 // (<any>mongoose).Promise = Bluebird;
@@ -26,43 +21,41 @@ const tenant = 'test_tenant';
 const randomValue = (min: number, max: number) => Math.round((Math.random() * (max - min) + min) * 100) / 100
 const delay = ms => new Promise(res => setTimeout(res, ms));
 
-const createSensorValues = (number: number, devices: IDeviceDocument[], apiKey = 'apiperftest_1') => {
-  const result = [];
-  range(number).forEach(nr =>
-    result.push(devices.map(d => ({
-      device_id: d.device_id,
-      apiKey: apiKey,
-      payload: 't|' + randomValue(-10, 39) + '|h|' + randomValue(0, 100) + '|ap|' + randomValue(920, 1100) +
-        '|t2|' + randomValue(20, 60) + '|ap2|' + randomValue(920, 1100) + '|pm10|' + randomValue(0, 90) +
-        '|pm25|' + randomValue(0, 90) + '|s|ok|l|43.44344,23.34333'
-    })))
-  );
-  return result;
+beforeAll(async () => await createTestEntries(3, 1000))
+afterAll(async () => await mongoose.connection.collection(collectionName).deleteMany({}));
+
+const random = (min: number, max: number) => Math.random() * (max - min) + min;
+const collectionName = 'my_test_sensors';
+
+
+const createTestEntries = async (numberOfSensors, numberOfSamples) => {
+  const ux = Date.parse('01 Jan 2019 00:00:00 GMT');
+  range(numberOfSensors).forEach(async sensor => {
+    await mongoose.connection.collection(collectionName)
+      .insertMany(range(numberOfSamples).map(nr => ({
+        sensorId: `sensor_${sensor}`,
+        timeStamp: new Date(ux + nr * 30000),
+        'entity_type': 'test_sensor',
+        'temperature': random(-20, 35),
+        'humidity': random(0, 100),
+        'airPressure': random(900, 1100),
+        'mangOHTemp': random(-20, 35),
+        'mangOHPress': random(900, 1100),
+        'pm10': random(0, 70),
+        'pm25': random(0, 70)
+      })))
+  })
 }
-
-
-const clearDB = () => Promise.all([
-  SensorValue.deleteMany({}),
-  User.deleteMany({}),
-  Device.deleteMany({}),
-  Group.deleteMany({}),
-  db.useDb('orion-' + tenant).collection('entities').deleteMany({})
-]);
-
-
-beforeEach(async () => await clearDB());
-
-afterAll(async () => await clearDB());
-
-const createTestEntries = (nr) =>
-  range(nr).map(nr => ({
-    sensorId: 'sensor1'
-  }))
 
 
 describe('Simple Raw Comet Query', () => {
   it('should get us the latest 10 results', async () => {
-    console.log('here');
+    const queryResult = await supertest(app)
+      .get('/STH/v1/contextEntities/type/test_sensor/id/sensor_2/attributes/temperature')
+      .set('Fiware-Service', tenant)
+      .set('Fiware-ServicePath', '/')
+      .send();
+    expect(queryResult.status).toEqual(200);
   })
 });
 

@@ -1,7 +1,7 @@
 import * as express from 'express';
 
 import UserCtrl from './controllers/user';
-import CometCtrl from './controllers/sensor-value';
+import CometCtrl from './controllers/comet';
 import {PassportStatic} from 'passport';
 import {Application} from 'express';
 import * as jwt from 'jsonwebtoken';
@@ -41,7 +41,8 @@ export default function setRoutes(app: Application, passport: PassportStatic) {
 
 
   // SensorValues
-  router.route('/STH/v1/contextEntities/type/:entityType/id/:entityId>/attributes/:attrName').post(sensorCtrl.process);
+  router.route('/STH/v1/contextEntities/type/:entityType/id/:entityId/attributes/:attrName')
+    .get(sensorCtrl.process);
 
   // Users
   router.route('/login').post(userCtrl.login);
