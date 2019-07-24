@@ -41,7 +41,7 @@ export default function setRoutes(app: Application, passport: PassportStatic) {
 
 
   // SensorValues
-  router.route('/STH/v1/contextEntities/type/:entityType/id/:entityId/attributes/:attrName')
+  router.route('/STH/v1/contextEntities/type/:entityType/id/:entityId/attributes/:attrNames')
     .get(sensorCtrl.process);
 
   // Users

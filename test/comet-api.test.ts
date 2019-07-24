@@ -9,6 +9,7 @@ import {app} from '../server/app';
 // import * as Bluebird from 'bluebird';
 import {createUsers, range, saveUsers, getToken} from './helpers';
 import User from '../server/models/user';
+import {qTrans} from '../server/config';
 
 
 
@@ -17,6 +18,8 @@ mongoose.connect(process.env.MONGODB_URI, {useNewUrlParser: true});
 const db = mongoose.connection;
 
 const tenant = 'test_tenant';
+const entity_type = 'test_sensor';
+const STH_PREFIX = process.env.STH_PREFIX || '_sth_test_';
 
 const randomValue = (min: number, max: number) => Math.round((Math.random() * (max - min) + min) * 100) / 100
 const delay = ms => new Promise(res => setTimeout(res, ms));
@@ -25,16 +28,17 @@ beforeAll(async () => await createTestEntries(3, 1000))
 afterAll(async () => await mongoose.connection.collection(collectionName).deleteMany({}));
 
 const random = (min: number, max: number) => Math.random() * (max - min) + min;
-const collectionName = 'my_test_sensors';
+const collectionName = STH_PREFIX + '_' + tenant + '_' + entity_type;
 
 
-const createTestEntries = async (numberOfSensors, numberOfSamples) => {
+const createTestEntries = (numberOfSensors, numberOfSamples) => {
   const ux = Date.parse('01 Jan 2019 00:00:00 GMT');
-  range(numberOfSensors).forEach(async sensor => {
-    await mongoose.connection.collection(collectionName)
+  return Promise.all(range(numberOfSensors).map( sensor =>
+    mongoose.connection.collection(collectionName)
       .insertMany(range(numberOfSamples).map(nr => ({
         sensorId: `sensor_${sensor}`,
-        timeStamp: new Date(ux + nr * 30000),
+        timestamp: new Date(ux + nr * 30000),
+        'entity_name': `entity_${sensor}`,
         'entity_type': 'test_sensor',
         'temperature': random(-20, 35),
         'humidity': random(0, 100),
@@ -44,172 +48,181 @@ const createTestEntries = async (numberOfSensors, numberOfSamples) => {
         'pm10': random(0, 70),
         'pm25': random(0, 70)
       })))
-  })
-}
+  ))}
 
 
 describe('Simple Raw Comet Query', () => {
-  it('should get us the latest 10 results', async () => {
+  it('should not be possible to make a query without lastN or hLimit', async () => {
     const queryResult = await supertest(app)
-      .get('/STH/v1/contextEntities/type/test_sensor/id/sensor_2/attributes/temperature')
+      .get('/STH/v1/contextEntities/type/test_sensor/id/entity_2/attributes/temperature')
+      .set('Fiware-Service', tenant)
+      .set('Fiware-ServicePath', '/')
+      .send();
+    expect(queryResult.status).toEqual(400);
+    expect(queryResult.body.message)
+      .toEqual('Either "lastN" or "hLimit/hOffset" need to be used as query parameters')
+  })
+  it('should be possible to get the last 10 entries for a single attribute', async () => {
+    const queryResult = await supertest(app)
+      .get('/STH/v1/contextEntities/type/test_sensor/id/entity_2/attributes/temperature?lastN=10')
       .set('Fiware-Service', tenant)
       .set('Fiware-ServicePath', '/')
       .send();
     expect(queryResult.status).toEqual(200);
+    expect(queryResult.body.contextResponses).toHaveLength(1);
+    const contextElement1 = queryResult.body.contextResponses[0].contextElement;
+    expect(contextElement1.attributes).toHaveLength(1);
+    expect(contextElement1.attributes[0].values).toHaveLength(10);
+    expect(contextElement1.attributes[0].name).toEqual('temperature');
+    expect(contextElement1.attributes[0].values[0].recvTime).toBeDefined();
+    expect(contextElement1.attributes[0].values[0].recvTime).toEqual('2019-01-01T08:20:00.000Z');
+    expect(contextElement1.attributes[0].values[9].recvTime).toEqual('2019-01-01T08:15:30.000Z');
+    expect(contextElement1.attributes[0].values[0].attrValue).toBeDefined();
+    expect(queryResult.body.contextResponses[0].statusCode.code).toEqual(200);
+    const ux = Date.parse('01 Jan 2019 00:00:00 GMT');
+
+  })
+  it('should not be possible to get more entries than confugured in MAX_RESULTS', async () => {
+    const queryResult = await supertest(app)
+      .get('/STH/v1/contextEntities/type/test_sensor/id/entity_2/attributes/temperature?lastN=1000')
+      .set('Fiware-Service', tenant)
+      .set('Fiware-ServicePath', '/')
+      .send();
+    expect(queryResult.status).toEqual(400);
+  })
+  it('should be possible to get the last 10 entries for a multiple attributes', async () => {
+    const queryResult = await supertest(app)
+      .get('/STH/v1/contextEntities/type/test_sensor/id/entity_2/attributes/temperature,pm10,pm25?lastN=10')
+      .set('Fiware-Service', tenant)
+      .set('Fiware-ServicePath', '/')
+      .send();
+    expect(queryResult.status).toEqual(200);
+    expect(queryResult.body.contextResponses).toHaveLength(1);
+    const contextElement1 = queryResult.body.contextResponses[0].contextElement;
+    expect(contextElement1.attributes).toHaveLength(3);
+    expect(contextElement1.attributes[0].values).toHaveLength(10);
+    expect(contextElement1.attributes[0].name).toEqual('temperature');
+    expect(contextElement1.attributes[1].name).toEqual('pm10');
+    expect(contextElement1.attributes[2].name).toEqual('pm25');
+    expect(contextElement1.attributes[0].values[0].recvTime).toBeDefined();
+    expect(contextElement1.attributes[0].values[0].attrValue).toBeDefined();
+    expect(queryResult.body.contextResponses[0].statusCode.code).toEqual(200);
+    const ux = Date.parse('01 Jan 2019 00:00:00 GMT');
+  })
+  it('should be possible to get the last 10 entries for multiple entities and multiple attributes', async () => {
+    const queryResult = await supertest(app)
+      .get('/STH/v1/contextEntities/type/test_sensor/id/entity_1,entity_2/attributes/temperature,pm10,pm25?lastN=10')
+      .set('Fiware-Service', tenant)
+      .set('Fiware-ServicePath', '/')
+      .send();
+    expect(queryResult.status).toEqual(200);
+    expect(queryResult.body.contextResponses).toHaveLength(2);
+    expect(queryResult.body.contextResponses[0].contextElement.id).toEqual('entity_1');
+    expect(queryResult.body.contextResponses[1].contextElement.id).toEqual('entity_2');
+    const contextElement1 = queryResult.body.contextResponses[0].contextElement;
+    expect(contextElement1.attributes).toHaveLength(3);
+    expect(contextElement1.attributes[0].values).toHaveLength(10);
+    expect(contextElement1.attributes[0].name).toEqual('temperature');
+    expect(contextElement1.attributes[1].name).toEqual('pm10');
+    expect(contextElement1.attributes[2].name).toEqual('pm25');
+    expect(contextElement1.attributes[0].values[0].recvTime).toBeDefined();
+    expect(contextElement1.attributes[0].values[0].attrValue).toBeDefined();
+    expect(queryResult.body.contextResponses[0].statusCode.code).toEqual(200);
+    const ux = Date.parse('01 Jan 2019 00:00:00 GMT');
+  })
+  it('should be possible to get the last 10 entries for multiple entities and multiple attributes starting from a given date', async () => {
+    const queryResult = await supertest(app)
+      .get('/STH/v1/contextEntities/type/test_sensor/id/entity_1,entity_2/attributes/' +
+        'temperature,pm10,pm25?lastN=10&dateFrom=2019-01-01T08:10:00.000Z')
+      .set('Fiware-Service', tenant)
+      .set('Fiware-ServicePath', '/')
+      .send();
+    expect(queryResult.status).toEqual(200);
+    expect(queryResult.body.contextResponses).toHaveLength(2);
+    expect(queryResult.body.contextResponses[0].contextElement.id).toEqual('entity_1');
+    expect(queryResult.body.contextResponses[1].contextElement.id).toEqual('entity_2');
+    const contextElement1 = queryResult.body.contextResponses[0].contextElement;
+    expect(contextElement1.attributes).toHaveLength(3);
+    expect(contextElement1.attributes[0].values).toHaveLength(10);
+    expect(contextElement1.attributes[0].name).toEqual('temperature');
+    expect(contextElement1.attributes[1].name).toEqual('pm10');
+    expect(contextElement1.attributes[2].name).toEqual('pm25');
+    expect(contextElement1.attributes[0].values[0].recvTime).toBeDefined();
+    expect(contextElement1.attributes[0].values[0].recvTime).toEqual('2019-01-01T08:10:00.000Z');
+    expect(contextElement1.attributes[0].values[9].recvTime).toEqual('2019-01-01T08:14:30.000Z');
+    expect(contextElement1.attributes[0].values[0].attrValue).toBeDefined();
+    expect(queryResult.body.contextResponses[0].statusCode.code).toEqual(200);
+  })
+  it('should be possible to get the last 10 entries for multiple entities and multiple attributes starting from a given date', async () => {
+    const queryResult = await supertest(app)
+      .get('/STH/v1/contextEntities/type/test_sensor/id/entity_1,entity_2/attributes/' +
+        'temperature,pm10,pm25?lastN=10&dateTo=2019-01-01T08:00:00.000Z')
+      .set('Fiware-Service', tenant)
+      .set('Fiware-ServicePath', '/')
+      .send();
+    expect(queryResult.status).toEqual(200);
+    expect(queryResult.body.contextResponses).toHaveLength(2);
+    expect(queryResult.body.contextResponses[0].contextElement.id).toEqual('entity_1');
+    expect(queryResult.body.contextResponses[1].contextElement.id).toEqual('entity_2');
+    const contextElement1 = queryResult.body.contextResponses[0].contextElement;
+    expect(contextElement1.attributes).toHaveLength(3);
+    expect(contextElement1.attributes[0].values).toHaveLength(10);
+    expect(contextElement1.attributes[0].name).toEqual('temperature');
+    expect(contextElement1.attributes[1].name).toEqual('pm10');
+    expect(contextElement1.attributes[2].name).toEqual('pm25');
+    expect(contextElement1.attributes[0].values[0].recvTime).toBeDefined();
+    expect(contextElement1.attributes[0].values[0].recvTime).toEqual('2019-01-01T08:00:00.000Z');
+    expect(contextElement1.attributes[0].values[9].recvTime).toEqual('2019-01-01T07:55:30.000Z');
+    expect(contextElement1.attributes[0].values[0].attrValue).toBeDefined();
+    expect(queryResult.body.contextResponses[0].statusCode.code).toEqual(200);
+  })
+  it('should be possible to get the last 10 entries within a data range', async () => {
+    const queryResult = await supertest(app)
+      .get('/STH/v1/contextEntities/type/test_sensor/id/entity_1,entity_2/attributes/' +
+        'temperature,pm10,pm25?lastN=10&dateTo=2019-01-01T08:00:00.000Z&dateFrom=2019-01-01T07:58:00.000Z')
+      .set('Fiware-Service', tenant)
+      .set('Fiware-ServicePath', '/')
+      .send();
+    expect(queryResult.status).toEqual(200);
+    expect(queryResult.body.contextResponses).toHaveLength(2);
+    expect(queryResult.body.contextResponses[0].contextElement.id).toEqual('entity_1');
+    expect(queryResult.body.contextResponses[1].contextElement.id).toEqual('entity_2');
+    const contextElement1 = queryResult.body.contextResponses[0].contextElement;
+    expect(contextElement1.attributes).toHaveLength(3);
+    expect(contextElement1.attributes[0].values).toHaveLength(5);
+    expect(contextElement1.attributes[0].name).toEqual('temperature');
+    expect(contextElement1.attributes[1].name).toEqual('pm10');
+    expect(contextElement1.attributes[2].name).toEqual('pm25');
+    expect(contextElement1.attributes[0].values[0].recvTime).toBeDefined();
+    expect(contextElement1.attributes[0].values[0].recvTime).toEqual('2019-01-01T08:00:00.000Z');
+    expect(contextElement1.attributes[0].values[4].recvTime).toEqual('2019-01-01T07:58:00.000Z');
+    expect(contextElement1.attributes[0].values[0].attrValue).toBeDefined();
+    expect(queryResult.body.contextResponses[0].statusCode.code).toEqual(200);
+  })
+  it('should be possible to paginate over entries', async () => {
+    const queryResult = await supertest(app)
+      .get('/STH/v1/contextEntities/type/test_sensor/id/entity_1,entity_2/attributes/' +
+        'temperature,pm10,pm25?dateTo=2019-01-01T08:00:00.000Z&dateFrom=2019-01-01T02:00:00.000Z' +
+        '&hLimit=20&hOffset=10')
+      .set('Fiware-Service', tenant)
+      .set('Fiware-ServicePath', '/')
+      .send();
+    expect(queryResult.status).toEqual(200);
+    expect(queryResult.body.contextResponses).toHaveLength(2);
+    expect(queryResult.body.contextResponses[0].contextElement.id).toEqual('entity_1');
+    expect(queryResult.body.contextResponses[1].contextElement.id).toEqual('entity_2');
+    const contextElement1 = queryResult.body.contextResponses[0].contextElement;
+    expect(contextElement1.attributes).toHaveLength(3);
+    expect(contextElement1.attributes[0].values).toHaveLength(20);
+    expect(contextElement1.attributes[0].name).toEqual('temperature');
+    expect(contextElement1.attributes[1].name).toEqual('pm10');
+    expect(contextElement1.attributes[2].name).toEqual('pm25');
+    expect(contextElement1.attributes[0].values[0].recvTime).toBeDefined();
+    expect(contextElement1.attributes[0].values[0].recvTime).toEqual('2019-01-01T07:55:00.000Z');
+    expect(contextElement1.attributes[0].values[19].recvTime).toEqual('2019-01-01T07:45:30.000Z');
+    expect(contextElement1.attributes[0].values[0].attrValue).toBeDefined();
+    expect(queryResult.body.contextResponses[0].statusCode.code).toEqual(200);
   })
 });
 
 
-/*
-const createRequest = data =>
-  supertest(app)
-    .post(`/iot/d?i=${data.device_id}&k=${data.apiKey}`)
-    // .set('Authorization', `Bearer ${getToken(savedUser[0])}`)
-    .set('Fiware-Service', tenant)
-    .set('Fiware-ServicePath', '/')
-    .type('text')
-    .send(data.payload);
-
-const transmitSamples = (deviceGroups: [][]): Promise<any> =>
-  deviceGroups.reduce((promise, group) =>
-    promise.then(() => Promise.all(group.map(createRequest)).then(() => delay(100)) ), Promise.resolve())
-
-describe('POST /api/iot/d', () => {
-  it('should create a new Sensor samples (ONE_DOCUMENT_PER_VALUE)', async () => {
-    // console.log(`Using token: ${userJWT}`);
-    process.env.STORAGE_STRATEGY = 'ONE_DOCUMENT_PER_VALUE';
-    const [groups, devices] = await Promise.all([storeGroups(1), storeDevices(1)]);
-    const samples = createSensorValues(1, devices);
-    const collectionName = tenant + '_' + process.env.STH_PREFIX + groups[0].apikey + '_' + devices[0].entity_type;
-    await mongoose.connection.collection(collectionName).deleteMany({});
-    const savedUser = await saveUsers(createUsers(1, 'sensor'));
-    const sensorResponse = await supertest(app)
-      .post(`/iot/d?i=${samples[0][0].device_id}&k=${groups[0].apikey}`)
-      .set('Authorization', `Bearer ${getToken(savedUser[0])}`)
-      .set('Fiware-Service', tenant)
-      .set('Fiware-ServicePath', '/')
-      .type('text')
-      .send(samples[0][0].payload);
-    expect(sensorResponse.status).toEqual(200);
-    const storedValues = await mongoose.connection.collection(collectionName).find({'sensorId': devices[0].device_id}).toArray();
-    expect(storedValues).toHaveLength(9);
-    await delay(3000);
-    const entities = await mongoose.connection.useDb('orion-' + tenant).collection('entities').find({}).toArray();
-    expect(entities).toHaveLength(1);
-    const entity = entities[0];
-    await mongoose.connection.collection(collectionName).deleteMany({});
-
-  });
-
-
-  it('should create a new Sensor sample (ONE_DOCUMENT_PER_TRANSACTION)', async () => {
-    // console.log(`Using token: ${userJWT}`);
-    process.env.STORAGE_STRATEGY = 'ONE_DOCUMENT_PER_TRANSACTION';
-    const [groups, devices] = await Promise.all([storeGroups(1), storeDevices(1)]);
-    const samples = createSensorValues(1, devices);
-    const collectionName = tenant + '_' + process.env.STH_PREFIX + groups[0].apikey + '_' + devices[0].entity_type;
-    await mongoose.connection.collection(collectionName).deleteMany({});
-    const savedUser = await saveUsers(createUsers(1, 'sensor'));
-    const sensorResponse = await supertest(app)
-      .post(`/iot/d?i=${samples[0][0].device_id}&k=${groups[0].apikey}`)
-      .set('Authorization', `Bearer ${getToken(savedUser[0])}`)
-      .set('Fiware-Service', tenant)
-      .set('Fiware-ServicePath', '/')
-      .type('text')
-      .send(samples[0][0].payload);
-    expect(sensorResponse.status).toEqual(200);
-    const storedValues = await mongoose.connection.collection(collectionName).find({'sensorId': devices[0].device_id}).toArray();
-    expect(storedValues).toHaveLength(1);
-    const storedSample = storedValues[0];
-    expect(storedSample.status).toEqual('ok');
-    await delay(3000);
-    const entities = await mongoose.connection.useDb('orion-' + tenant).collection('entities').find({}).toArray();
-    expect(entities).toHaveLength(1);
-    checkEntity(entities[0], storedValues[0]);
-    await mongoose.connection.collection(collectionName).deleteMany({});
-  });
-
-  it('should throw an error if there is no corresponding device configuration', async () => {
-    // console.log(`Using token: ${userJWT}`);
-    process.env.STORAGE_STRATEGY = 'ONE_DOCUMENT_PER_TRANSACTION';
-    const [groups, devices] = await Promise.all([storeGroups(1), storeDevices(1)]);
-    const samples = createSensorValues(1, devices);
-    const collectionName = tenant + '_' + process.env.STH_PREFIX + groups[0].apikey + '_' + devices[0].entity_type;
-    await mongoose.connection.collection(collectionName).deleteMany({});
-    const savedUser = await saveUsers(createUsers(1, 'sensor'));
-    const sensorResponse = await supertest(app)
-      .post(`/iot/d?i=not_configured&k=${groups[0].apikey}`)
-      .set('Authorization', `Bearer ${getToken(savedUser[0])}`)
-      .set('Fiware-Service', tenant)
-      .set('Fiware-ServicePath', '/')
-      .type('text')
-      .send(samples[0][0].payload);
-    expect(sensorResponse.status).toEqual(500);
-    expect(sensorResponse.body).toEqual({message: 'There is no device configuration for device \'not_configured\''});
-  });
-
-  it('should throw an error if there is a payload with a property that is not configured', async () => {
-    // console.log(`Using token: ${userJWT}`);
-    process.env.STORAGE_STRATEGY = 'ONE_DOCUMENT_PER_TRANSACTION';
-    const [groups, devices] = await Promise.all([storeGroups(1), storeDevices(1)]);
-    const samples = createSensorValues(1, devices);
-    const collectionName = tenant + '_' + process.env.STH_PREFIX + groups[0].apikey + '_' + devices[0].entity_type;
-    await mongoose.connection.collection(collectionName).deleteMany({});
-    const savedUser = await saveUsers(createUsers(1, 'sensor'));
-    const sensorResponse = await supertest(app)
-      .post(`/iot/d?i=${samples[0][0].device_id}&k=${groups[0].apikey}`)
-      .set('Authorization', `Bearer ${getToken(savedUser[0])}`)
-      .set('Fiware-Service', tenant)
-      .set('Fiware-ServicePath', '/')
-      .type('text')
-      .send(samples[0][0].payload + '|nok|missing');
-    expect(sensorResponse.status).toEqual(500);
-  });
-
-
-
-
-  it('should create multiple Sensor samples and transmit the latest value to ORION', async () => {
-    jest.setTimeout(10000);
-    // console.log(`Using token: ${userJWT}`);
-    process.env.STORAGE_STRATEGY = 'ONE_DOCUMENT_PER_TRANSACTION';
-    const numberOfDevices = 5;
-    const numberOfSamples = 3;
-    const [groups, devices] = await Promise.all([storeGroups(1), storeDevices(numberOfDevices)]);
-    const samples = createSensorValues(numberOfSamples, devices);
-    const collectionName = tenant + '_' + process.env.STH_PREFIX + groups[0].apikey + '_' + devices[0].entity_type;
-    await mongoose.connection.collection(collectionName).deleteMany({});
-    const savedUser = await saveUsers(createUsers(1, 'sensor'));
-    const sensorResponses = await transmitSamples(samples);
-    const storedValues = await mongoose.connection.collection(collectionName).find({}).sort({timestamp: -1}).toArray();
-    expect(storedValues).toHaveLength(numberOfSamples * numberOfDevices);
-    await delay(3000);
-    const entities = await mongoose.connection.useDb('orion-' + tenant)
-      .collection('entities').find({}).sort({'timestamp': -1}).toArray();
-    expect(entities).toHaveLength(numberOfDevices);
-    range(numberOfDevices).forEach( nr => {
-        const lastSample = storedValues.find(s => s.sensorId === 'test_device_' + nr);
-        const entity = entities.find(e => e._id.id === 'TestSensor' + nr);
-        checkEntity(entity, lastSample);
-      }
-    );
-    // repeat the test once more
-    const samples2 = createSensorValues(numberOfSamples, devices);
-    const sensorResponses2 = await transmitSamples(samples);
-    const storedValues2 = await mongoose.connection.collection(collectionName).find({}).sort({timestamp: -1}).toArray();
-    expect(storedValues2).toHaveLength(numberOfSamples * numberOfDevices * 2);
-    await delay(3000);
-    const entities2 = await mongoose.connection.useDb('orion-' + tenant)
-      .collection('entities').find({}).sort({'timestamp': -1}).toArray();
-    expect(entities).toHaveLength(numberOfDevices);
-    range(numberOfDevices).forEach( nr => {
-        const lastSample = storedValues2.find(s => s.sensorId === 'test_device_' + nr);
-        const entity = entities2.find(e => e._id.id === 'TestSensor' + nr);
-        checkEntity(entity, lastSample);
-      }
-    );
-    await mongoose.connection.collection(collectionName).deleteMany({});
-  });
-
-});
-*/
