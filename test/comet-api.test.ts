@@ -90,7 +90,7 @@ describe('Simple Raw Comet Query', () => {
       .send();
     expect(queryResult.status).toEqual(400);
   })
-  it('should be possible to get the last 10 entries for a multiple attributes', async () => {
+  it('should be possible to get the last 10 entries for multiple attributes', async () => {
     const queryResult = await supertest(app)
       .get('/STH/v1/contextEntities/type/test_sensor/id/entity_2/attributes/temperature,pm10,pm25?lastN=10')
       .set('Fiware-Service', tenant)
@@ -107,6 +107,26 @@ describe('Simple Raw Comet Query', () => {
     expect(contextElement1.attributes[0].values[0].recvTime).toBeDefined();
     expect(contextElement1.attributes[0].values[0].attrValue).toBeDefined();
     expect(queryResult.body.contextResponses[0].statusCode.code).toEqual(200);
+    const ux = Date.parse('01 Jan 2019 00:00:00 GMT');
+  })
+  it('should be possible to get the last 10 entries for multiple attributes including total number of records', async () => {
+    const queryResult = await supertest(app)
+      .get('/STH/v1/contextEntities/type/test_sensor/id/entity_2/attributes/temperature,pm10,pm25?lastN=10&count')
+      .set('Fiware-Service', tenant)
+      .set('Fiware-ServicePath', '/')
+      .send();
+    expect(queryResult.status).toEqual(200);
+    expect(queryResult.body.contextResponses).toHaveLength(1);
+    const contextElement1 = queryResult.body.contextResponses[0].contextElement;
+    expect(contextElement1.attributes).toHaveLength(3);
+    expect(contextElement1.attributes[0].values).toHaveLength(10);
+    expect(contextElement1.attributes[0].name).toEqual('temperature');
+    expect(contextElement1.attributes[1].name).toEqual('pm10');
+    expect(contextElement1.attributes[2].name).toEqual('pm25');
+    expect(contextElement1.attributes[0].values[0].recvTime).toBeDefined();
+    expect(contextElement1.attributes[0].values[0].attrValue).toBeDefined();
+    expect(queryResult.body.contextResponses[0].statusCode.code).toEqual(200);
+    expect(contextElement1.count).toEqual(1000);
     const ux = Date.parse('01 Jan 2019 00:00:00 GMT');
   })
   it('should be possible to get the last 10 entries for multiple entities and multiple attributes', async () => {
