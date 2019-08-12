@@ -1,0 +1,13 @@
+kind: Service
+apiVersion: v1
+metadata:
+  name: iot-tsdb
+spec:
+  ports:
+    - port: 3000
+      targetPort: 3000
+      name: api
+      nodePort: {{ .Values.tsdb.nodePort | default 32210}}
+  selector:
+    run: iot-tsdb
+  type: LoadBalancer

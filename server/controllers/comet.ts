@@ -5,7 +5,7 @@ import {Request, Response} from 'express';
 
 
 enum AggregationMethods {'avg', 'min' , 'max' , 'sum'}
-enum AggregationPeriods {'year', 'second', 'minute', 'hour', 'month', 'half_hour', 'quarter_hour', 'week'}
+enum AggregationPeriods {'year', 'second', 'minute', 'hour', 'month', 'halfhour', 'quarterhour', 'week'}
 
 type AggregationMethod =  keyof AggregationMethods;
 type AggregationPeriod =  keyof AggregationPeriods
@@ -53,18 +53,6 @@ export default class CometCtrl {
 
   date = {date: '$timestamp', timezone: 'Europe/Vienna'};
 
-  /*
-   {
-        '$switch': {
-          'branches': [
-            { 'case': { '$lt': [ {"$minute": {"date": "$timestamp", "timezone": "Europe/Vienna"}}, 15 ] }, 'then': 1 },
-            { 'case': { '$lt': [ {"$minute": {"date": "$timestamp", "timezone": "Europe/Vienna"}}, 30 ] }, 'then': 2 },
-            { 'case': { '$lt': [ {"$minute": {"date": "$timestamp", "timezone": "Europe/Vienna"}}, 45 ] }, 'then': 3 }
-          ], 'default': 4
-        }
-      }
-   */
-
   timeElements = {
      year: {func: {'$year': this.date}, includes: ['year']},
      month: {func: {'$month': this.date}, includes: ['year', 'month']},
@@ -72,14 +60,14 @@ export default class CometCtrl {
      day: {func: {'$dayOfYear': this.date}, includes: ['year', 'day']},
      hour: {func: {'$hour': this.date}, includes: ['year', 'day', 'hour']},
      minute: {func: {'$minute': this.date}, includes: ['year', 'day', 'hour', 'minute']},
-     half_hour: {func: {
-         $cond:{
+     halfhour: {func: {
+         $cond: {
            if: { $lt: [{'$minute': this.date}, 30]},
            then: 0,
            else: 1
          }
-       }, includes: ['year', 'day', 'hour', 'half_hour']},
-     quarter_hour: {func: {
+       }, includes: ['year', 'day', 'hour', 'halfhour']},
+     quarterhour: {func: {
          '$switch': {
            'branches': [
              { 'case': { '$lt': [ {'$minute': this.date}, 15 ] }, 'then': 1 },
@@ -87,7 +75,7 @@ export default class CometCtrl {
              { 'case': { '$lt': [ {'$minute': this.date}, 45 ] }, 'then': 3 }
            ], 'default': 4
          }
-       }, includes: ['year', 'day', 'hour', 'quarter_hour']},
+       }, includes: ['year', 'day', 'hour', 'quarterhour']},
      second: {func: {'$second': this.date}, includes: ['year', 'day', 'hour', 'minute', 'second']},
   };
 
@@ -111,7 +99,7 @@ export default class CometCtrl {
       ...attributes.reduce((acc, att) => ({[att]: {[aggregationMethod(aggMethod)]: `$${att}`}, ...acc}), {}),
     }
     const result = [{$match: match}, {$group: group}, {$sort: {timestamp: 1}}]
-    console.log('result = ' + JSON.stringify(result));
+    qTrans.debug('result = ' + JSON.stringify(result));
     return result
   }
 

@@ -1,0 +1,7 @@
+tsdb:
+  mongo: mongodb://dbadmin:admin@mongo-shard-router-svc.mongo:27017/iot-frontend?authSource=admin
+  replicas: 1
+  image: fiwareaustria/iot-tsdb:latest
+  nodePort: 32210
+  logLevel: debug
+  maxResults: 5000

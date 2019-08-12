@@ -1,0 +1,35 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: iot-tsdb
+  labels:
+    app: iot-tsdb
+spec:
+  replicas: {{ .Values.tsdb.replicas | default 1 }}
+  selector:
+    matchLabels:
+      run: iot-tsdb
+  template:
+    metadata:
+      labels:
+        run: iot-tsdb
+    spec:
+      containers:
+        - name: iot-tsdb
+          image: {{ .Values.tsdb.image }}
+          ports:
+            - containerPort: 3000
+              name: api
+            - containerPort: 4200
+              name: gui
+          volumeMounts:
+            - name: iot-tsdb-config
+              mountPath: /tsdb/.env
+              subPath: .env
+
+      volumes:
+        - name: iot-tsdb-config
+          configMap:
+            # Provide the name of the ConfigMap containing the files you want
+            # to add to the container
+            name: iot-tsdb-config

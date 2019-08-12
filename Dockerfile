@@ -1,12 +1,11 @@
 FROM node:12.5.0-alpine
 
-WORKDIR /sensors
+WORKDIR /tsdb
 
-COPY client ./client
 COPY server ./server
-COPY package*.json preprocessor.js angular.json proxy.conf.json tsconfig.json tslint.json ./
-COPY .env-k8s ./.env
+COPY package*.json preprocessor.js tsconfig.json tslint.json ./
+COPY .env ./.env
 
-RUN npm install && npm run predev && npm run buildprod
+RUN npm install && npm run predev
 
 ENTRYPOINT ["node", "dist/server/server.js"]

@@ -244,7 +244,12 @@ describe('Simple Raw Comet Query', () => {
     expect(queryResult.body.contextResponses[0].statusCode.code).toEqual(200);
   })
 
-  it('should be possible to make an aggregation query getting average values per hour', async () => {
+
+});
+
+describe('The Aggregate Query Mode', () => {
+
+  it('should allow to make an aggregation query getting average values per hour', async () => {
     const avgQueryResult = await supertest(app)
       .get('/STH/v1/contextEntities/type/test_sensor/id/entity_1,entity_2/attributes/' +
         'temperature,pm10,pm25?dateFrom=2018-01-01T00:00:00.000Z&dateTo=2019-12-31T23:59:59.999Z' +
@@ -254,30 +259,41 @@ describe('Simple Raw Comet Query', () => {
       .send();
     // console.log(JSON.stringify(avgQueryResult.body));
     expect(avgQueryResult.status).toEqual(200);
+    expect(avgQueryResult.body.contextResponses).toBeDefined();
+    expect(avgQueryResult.body.contextResponses).toHaveLength(2);
+    const ce1 = avgQueryResult.body.contextResponses[0];
+    expect(ce1.contextElement.attributes).toHaveLength(3);
   });
-  it('should be possible to make an aggregation query getting average values per half hour', async () => {
+  it('should allow to make an aggregation query getting average values per half hour', async () => {
     const avgQueryResult = await supertest(app)
       .get('/STH/v1/contextEntities/type/test_sensor/id/entity_1,entity_2/attributes/' +
         'temperature,pm10,pm25?dateFrom=2018-01-01T00:00:00.000Z&dateTo=2019-12-31T23:59:59.999Z' +
-        '&aggrMethod=avg&aggrPeriod=half_hour')
+        '&aggrMethod=avg&aggrPeriod=halfhour')
       .set('Fiware-Service', tenant)
       .set('Fiware-ServicePath', '/')
       .send();
-    console.log(JSON.stringify(avgQueryResult.body));
+    // console.log(JSON.stringify(avgQueryResult.body));
     expect(avgQueryResult.status).toEqual(200);
+    expect(avgQueryResult.body.contextResponses).toBeDefined();
+    expect(avgQueryResult.body.contextResponses).toHaveLength(2);
+    const ce1 = avgQueryResult.body.contextResponses[0];
+    expect(ce1.contextElement.attributes).toHaveLength(3);
   });
-  it('should be possible to make an aggregation query getting average values per quarter hour', async () => {
+  it('should allow to make an aggregation query getting average values per quarter hour', async () => {
     const avgQueryResult = await supertest(app)
       .get('/STH/v1/contextEntities/type/test_sensor/id/entity_1,entity_2/attributes/' +
         'temperature,pm10,pm25?dateFrom=2018-01-01T00:00:00.000Z&dateTo=2019-12-31T23:59:59.999Z' +
-        '&aggrMethod=avg&aggrPeriod=quarter_hour')
+        '&aggrMethod=avg&aggrPeriod=quarterhour')
       .set('Fiware-Service', tenant)
       .set('Fiware-ServicePath', '/')
       .send();
-    console.log(JSON.stringify(avgQueryResult.body));
+    // console.log(JSON.stringify(avgQueryResult.body));
     expect(avgQueryResult.status).toEqual(200);
+    expect(avgQueryResult.body.contextResponses).toBeDefined();
+    expect(avgQueryResult.body.contextResponses).toHaveLength(2);
+    const ce1 = avgQueryResult.body.contextResponses[0];
+    expect(ce1.contextElement.attributes).toHaveLength(3);
   });
-
 });
 
 
