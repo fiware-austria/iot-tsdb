@@ -5,7 +5,7 @@ import {Request, Response} from 'express';
 
 
 enum AggregationMethods {'avg', 'min' , 'max' , 'sum'}
-enum AggregationPeriods {'year', 'second', 'minute', 'hour', 'month', 'halfhour', 'quarterhour', 'week'}
+enum AggregationPeriods {'year', 'second', 'minute', 'hour', 'month', 'day', 'halfhour', 'quarterhour', 'week'}
 
 type AggregationMethod =  keyof AggregationMethods;
 type AggregationPeriod =  keyof AggregationPeriods
@@ -230,7 +230,7 @@ export default class CometCtrl {
         countQueries = info.entity_ids.map(id => {
           const constraints = Object.assign({entity_name: id}, time_constraints);
           qTrans.debug('Query constraints for counting: ' + JSON.stringify(constraints));
-          return collection.count(constraints);
+          return collection.countDocuments(constraints);
         })
       }
       const documentQueries = info.entity_ids.map(id => {
